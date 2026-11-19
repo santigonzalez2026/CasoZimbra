@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zimbra &amp; LoopFuse OneView | Sistema Transaccional Comercial (Sesión 3)</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-brand">
+            <div class="brand-badge">ZCS</div>
+            <div>
+                <h1>Zimbra Collaboration Suite &amp; LoopFuse OneView</h1>
+                <p>Prototipo Front-end Transaccional — Sesión 3: Automatización, Triggers, Procedimientos y Funciones UDF</p>
+            </div>
+        </div>
+        <div class="topbar-status">
+            <span id="badgeConexion" class="status-pill status-checking">Verificando conexión API...</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="inicializarPortal()">Actualizar datos</button>
+        </div>
+    </header>
+
+    <nav class="tabs-nav" aria-label="Módulos del sistema">
+        <button type="button" class="tab-btn active" data-tab="tab-prospectos" onclick="cambiarTab('tab-prospectos')">
+            1. Registro de Clientes / Prospectos
+        </button>
+        <button type="button" class="tab-btn" data-tab="tab-propuestas" onclick="cambiarTab('tab-propuestas')">
+            2. Registro de Propuestas Comerciales
+        </button>
+        <button type="button" class="tab-btn" data-tab="tab-automatizacion" onclick="cambiarTab('tab-automatizacion')">
+            3. Automatización SQL (Triggers, SP y UDF)
+        </button>
+    </nav>
+
+    <main class="container">
+        <!-- Notificación global de respuesta transaccional -->
+        <div id="alertaGlobal" class="alert-box hidden" role="status"></div>
+
+        <!-- ========================================================================= -->
+        <!-- PESTAÑA 1: FORMULARIO DE REGISTRO DE CLIENTES / PROSPECTOS (RF-01, RF-03) -->
+        <!-- ========================================================================= -->
+        <section id="tab-prospectos" class="tab-panel active">
+            <div class="grid-2col">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Formulario de Registro de Cliente / Prospecto</h2>
+                        <span class="tag">POST /api/prospectos (ACID)</span>
+                    </div>
+                    <p class="card-desc">
+                        Registra un nuevo cliente potencial en <code>prospecto</code>, crea su asignación inicial en
+                        <code>asignacion_asesor</code> y programa la alerta automática de seguimiento en <code>alerta</code>.
+                    </p>
+                    <form id="formProspecto" onsubmit="registrarProspecto(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="prospNombre">Nombre del contacto *</label>
+                                <input type="text" id="prospNombre" required placeholder="Ej. Valentina" maxlength="60">
+                            </div>
+                            <div class="form-group">
+                                <label for="prospApellido">Apellido del contacto *</label>
+                                <input type="text" id="prospApellido" required placeholder="Ej. Restrepo" maxlength="60">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="prospCorreo">Correo corporativo (UNIQUE) *</label>
+                                <input type="email" id="prospCorreo" required placeholder="vrestrepo@empresa.com.co" maxlength="100">
+                            </div>
+                            <div class="form-group">
+                                <label for="prospTelefono">Teléfono de contacto</label>
+                                <input type="text" id="prospTelefono" placeholder="+57-3158009911" maxlength="20">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="prospEmpresa">Empresa / Organización *</label>
+                                <input type="text" id="prospEmpresa" required placeholder="Ej. Soluciones Andinas S.A.S." maxlength="100">
+                            </div>
+                            <div class="form-group">
+                                <label for="prospPais">País *</label>
+                                <select id="prospPais" required>
+                                    <option value="Colombia">Colombia</option>
+                                    <option value="México">México</option>
+                                    <option value="Chile">Chile</option>
+                                    <option value="Perú">Perú</option>
+                                    <option value="Ecuador">Ecuador</option>
+                                    <option value="Argentina">Argentina</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="prospVendedor">Asesor comercial asignado *</label>
+                                <select id="prospVendedor" required></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="prospCampana">Campaña LoopFuse de origen *</label>
+                                <select id="prospCampana" required></select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="prospProducto">Edición ZCS de interés inicial *</label>
+                            <select id="prospProducto" required></select>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Registrar Prospecto y Asignar Asesor</button>
+                            <button type="reset" class="btn btn-secondary">Limpiar formulario</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Clientes y Prospectos Registrados</h2>
+                        <span id="contadorProspectos" class="badge-count">0 registros</span>
+                    </div>
+                    <p class="card-desc">
+                        Listado en tiempo real desde la tabla <code>prospecto</code> con su estado comercial y puntaje de interés (Lead Scoring).
+                    </p>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Empresa / Contacto</th>
+                                    <th>Correo</th>
+                                    <th>Asesor</th>
+                                    <th>Estado</th>
+                                    <th>Puntaje</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaProspectosBody">
+                                <tr><td colspan="6" class="empty-cell">Cargando prospectos...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- PESTAÑA 2: FORMULARIO DE PROPUESTAS COMERCIALES (SP + TRIGGER + UDF)      -->
+        <!-- ========================================================================= -->
+        <section id="tab-propuestas" class="tab-panel">
+            <div class="grid-2col">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Formulario de Nueva Propuesta Comercial</h2>
+                        <span class="tag">CALL sp_registrar_propuesta_completa</span>
+                    </div>
+                    <p class="card-desc">
+                        Invoca el procedimiento almacenado <code>sp_registrar_propuesta_completa</code>, dispara el trigger
+                        <code>trg_detalle_propuesta_after_insert_recalcular_total</code> y calcula el total con la función UDF
+                        <code>fn_calcular_subtotal_propuesta</code>.
+                    </p>
+                    <form id="formPropuesta" onsubmit="registrarPropuesta(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="propProspecto">Cliente / Prospecto destinatario *</label>
+                                <select id="propProspecto" required></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="propVendedor">Asesor comercial responsable *</label>
+                                <select id="propVendedor" required></select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="propProducto">Producto / Edición Zimbra Collaboration Suite *</label>
+                            <select id="propProducto" required onchange="actualizarPrecioSugerido()"></select>
+                        </div>
+
+                        <div class="form-row-3">
+                            <div class="form-group">
+                                <label for="propCantidad">Cantidad de licencias *</label>
+                                <input type="number" id="propCantidad" min="1" max="5000" value="40" required oninput="recalcularVistaPreviaPropuesta()">
+                            </div>
+                            <div class="form-group">
+                                <label for="propPrecio">Precio unitario (USD) *</label>
+                                <input type="number" id="propPrecio" min="1" step="0.01" value="35.00" required oninput="recalcularVistaPreviaPropuesta()">
+                            </div>
+                            <div class="form-group">
+                                <label for="propVigencia">Vigencia (días) *</label>
+                                <input type="number" id="propVigencia" min="5" max="180" value="30" required>
+                            </div>
+                        </div>
+
+                        <div class="preview-total">
+                            <span>Subtotal estimado (UDF <code>fn_calcular_subtotal_propuesta</code>):</span>
+                            <strong id="propTotalPreview">USD $1,400.00</strong>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Generar Propuesta Comercial (SP + Trigger)</button>
+                        </div>
+                    </form>
+
+                    <hr class="divider">
+
+                    <div class="card-header">
+                        <h3>Cierre Rápido de Venta sobre Propuesta</h3>
+                        <span class="tag">Trigger: trg_venta_after_insert_actualizar_propuesta</span>
+                    </div>
+                    <form id="formCerrarVenta" onsubmit="cerrarVentaPropuesta(event)">
+                        <div class="form-row-3">
+                            <div class="form-group">
+                                <label for="ventaIdPropuesta">ID Propuesta *</label>
+                                <input type="number" id="ventaIdPropuesta" min="1" value="35" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="ventaValorFinal">Valor Final (USD)</label>
+                                <input type="number" id="ventaValorFinal" min="1" step="0.01" placeholder="Opcional (usa total)">
+                            </div>
+                            <div class="form-group">
+                                <label for="ventaMedioPago">Medio de pago *</label>
+                                <select id="ventaMedioPago" required>
+                                    <option value="Transferencia bancaria">Transferencia bancaria</option>
+                                    <option value="Tarjeta corporativa">Tarjeta corporativa</option>
+                                    <option value="Orden de compra">Orden de compra</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-success btn-sm">Registrar Venta y Convertir Cliente</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Propuestas Comerciales Registradas</h2>
+                        <span id="contadorPropuestas" class="badge-count">0 propuestas</span>
+                    </div>
+                    <p class="card-desc">
+                        Listado actualizado de <code>propuesta_comercial</code> con su estado y valor total recalculado por Trigger.
+                    </p>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Prospecto / Empresa</th>
+                                    <th>Asesor</th>
+                                    <th>Vigencia</th>
+                                    <th>Valor Total</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaPropuestasBody">
+                                <tr><td colspan="6" class="empty-cell">Cargando propuestas...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- PESTAÑA 3: AUTOMATIZACIÓN Y LÓGICA AVANZADA (TRIGGERS, SP, UDF)           -->
+        <!-- ========================================================================= -->
+        <section id="tab-automatizacion" class="tab-panel">
+            <div class="grid-3col">
+                <!-- Tarjeta 1: Disparo de Trigger de Actividad Web y Lead Scoring -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Simulador de Trigger LoopFuse</h3>
+                        <span class="tag">AFTER INSERT ON visita_web</span>
+                    </div>
+                    <p class="card-desc">
+                        Inserta una actividad web para disparar <code>trg_visita_web_after_insert_scoring_y_alerta</code>
+                        (suma puntaje, califica al prospecto y crea alerta si supera 80 pts).
+                    </p>
+                    <form onsubmit="simularVisitaWebTrigger(event)">
+                        <div class="form-group">
+                            <label for="visitaProspecto">Prospecto *</label>
+                            <select id="visitaProspecto" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="visitaTipo">Tipo de actividad en el sitio web *</label>
+                            <select id="visitaTipo" required>
+                                <option value="Descarga de prueba">Descarga de prueba (+25 pts y alerta)</option>
+                                <option value="Consulta de precios">Consulta de precios (+15 pts)</option>
+                                <option value="Apertura de correo">Apertura de correo (+10 pts)</option>
+                                <option value="Visita">Visita general (+5 pts)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Disparar Trigger de Actividad Web</button>
+                    </form>
+                </div>
+
+                <!-- Tarjeta 2: Consulta de Funciones UDF -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Evaluador de Funciones UDF</h3>
+                        <span class="tag">SELECT fn_*(...)</span>
+                    </div>
+                    <p class="card-desc">
+                        Consulta en tiempo real las 5 funciones UDF implementadas en MySQL sobre cualquier registro.
+                    </p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="udfIdProspecto">ID Prospecto</label>
+                            <input type="number" id="udfIdProspecto" value="1" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="udfIdPropuesta">ID Propuesta</label>
+                            <input type="number" id="udfIdPropuesta" value="1" min="1">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="consultarUdfProspecto()">
+                            UDF Prospecto / Hábito
+                        </button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="consultarUdfPropuesta()">
+                            UDF Subtotal / Vigencia
+                        </button>
+                    </div>
+                    <pre id="resultadoUdfBox" class="code-preview">Seleccione una función UDF para visualizar el cálculo SQL...</pre>
+                </div>
+
+                <!-- Tarjeta 3: Procedimientos Almacenados de Reportes y Vencimientos -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Procedimientos Almacenados</h3>
+                        <span class="tag">CALL sp_*(...)</span>
+                    </div>
+                    <p class="card-desc">
+                        Ejecuta los procedimientos almacenados de reportes gerenciales y verificación automática de vencimientos.
+                    </p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="repAnio">Año reporte</label>
+                            <input type="number" id="repAnio" value="2026" min="2024" max="2030">
+                        </div>
+                        <div class="form-group">
+                            <label for="repMes">Mes (0 = Todos)</label>
+                            <input type="number" id="repMes" value="0" min="0" max="12">
+                        </div>
+                    </div>
+                    <div class="btn-stack">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="cargarReporteMensual()">
+                            1. Ejecutar sp_reporte_mensual_ventas
+                        </button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="cargarReporteDesempeno()">
+                            2. Ejecutar sp_reporte_desempeno_asesores
+                        </button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="cargarReporteCampanas()">
+                            3. Ejecutar sp_reporte_rendimiento_campanas
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" onclick="ejecutarBatchVencimientos()">
+                            4. Ejecutar sp_actualizar_propuestas_vencidas_y_alertas
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabla dinámica de resultados de Procedimientos Almacenados y Alertas -->
+            <div class="card mt-20">
+                <div class="card-header">
+                    <h2 id="tituloTablaReporte">Resultado del Procedimiento Almacenado: Reporte Mensual de Ventas</h2>
+                    <span id="contadorReporte" class="badge-count">0 filas</span>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table" id="tablaReporteDinamico">
+                        <thead id="tablaReporteHead"></thead>
+                        <tbody id="tablaReporteBody">
+                            <tr><td class="empty-cell">Pulse uno de los procedimientos almacenados para visualizar sus resultados.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>
+            <strong>Corporación Universitaria Minuto de Dios – UNIMINUTO</strong> | Sistemas Transaccionales de Bases de Datos |
+            Autores: Maria Fernanda Chacón Criales, Sergio Alberto Quiroga Gomez y Santiago Gonzalez Gamboa
+        </p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

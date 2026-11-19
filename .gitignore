@@ -1,0 +1,21 @@
+# Archivos compilados de Maven / Java
+backend-zimbra/target/
+*.class
+*.jar
+*.war
+*.log
+
+# Temporales de Microsoft Office / Windows
+~$*.docx
+~$*.xlsx
+~$*.pptx
+Thumbs.db
+desktop.ini
+
+# Configuraciones locales de IDEs
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
